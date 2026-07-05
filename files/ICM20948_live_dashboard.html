@@ -1,0 +1,238 @@
+
+<style>
+h2.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);background:transparent;color:var(--color-text-primary)}
+.top{display:flex;align-items:center;justify-content:space-between;padding:1rem 0 .75rem}
+.title{font-size:16px;font-weight:500}
+.badge{font-size:12px;padding:3px 10px;border-radius:var(--border-radius-md);background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary)}
+.badge.live{background:#eaf3de;color:#3b6d11;border-color:#97c459}
+button{cursor:pointer;font-size:13px;font-weight:500;padding:6px 16px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-primary)}
+button:hover{background:var(--color-background-secondary)}
+button:disabled{opacity:.4;cursor:default}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:1rem}
+.card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:.75rem 1rem}
+.card .lbl{font-size:12px;color:var(--color-text-secondary);margin-bottom:4px}
+.card .val{font-size:22px;font-weight:500;font-variant-numeric:tabular-nums}
+.card .unit{font-size:12px;color:var(--color-text-secondary);margin-left:2px}
+.horizon{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem}
+.panel{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:.75rem 1rem}
+.panel h3{font-size:13px;font-weight:500;color:var(--color-text-secondary);margin-bottom:.5rem}
+.chart-wrap{position:relative;height:160px}
+.raw-panel{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:.75rem 1rem;margin-bottom:.5rem}
+.raw-panel h3{font-size:13px;font-weight:500;color:var(--color-text-secondary);margin-bottom:.5rem}
+.raw-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.raw-item .rl{font-size:11px;color:var(--color-text-tertiary)}
+.raw-item .rv{font-size:14px;font-weight:500;font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--color-text-secondary);margin-bottom:6px}
+.legend span{display:flex;align-items:center;gap:4px}
+.leg-dot{width:10px;height:10px;border-radius:2px}
+.note{font-size:12px;color:var(--color-text-secondary);text-align:center;padding:.5rem 0}
+</style>
+
+<h2 class="sr-only">ICM-20948 live sensor dashboard — shows roll, pitch, and raw accelerometer data streamed from a Raspberry Pi Pico 2W over Web Serial.</h2>
+
+<div class="top">
+  <span class="title">ICM-20948 live</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="badge" id="status-badge">disconnected</span>
+    <button id="conn-btn">Connect</button>
+    <button id="clear-btn">Clear</button>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="lbl">Roll</div><div><span class="val" id="c-roll">—</span><span class="unit">°</span></div></div>
+  <div class="card"><div class="lbl">Pitch</div><div><span class="val" id="c-pitch">—</span><span class="unit">°</span></div></div>
+  <div class="card"><div class="lbl">Accel X</div><div><span class="val" id="c-ax">—</span><span class="unit">raw</span></div></div>
+  <div class="card"><div class="lbl">Accel Y</div><div><span class="val" id="c-ay">—</span><span class="unit">raw</span></div></div>
+  <div class="card"><div class="lbl">Accel Z</div><div><span class="val" id="c-az">—</span><span class="unit">raw</span></div></div>
+</div>
+
+<div class="horizon">
+  <div class="panel">
+    <h3>Roll &amp; Pitch (°)</h3>
+    <div class="legend">
+      <span><span class="leg-dot" style="background:#378add"></span>Roll</span>
+      <span><span class="leg-dot" style="background:#d4537e"></span>Pitch</span>
+    </div>
+    <div class="chart-wrap"><canvas id="angleChart" role="img" aria-label="Live line chart of roll and pitch angles in degrees"></canvas></div>
+  </div>
+  <div class="panel">
+    <h3>Accelerometer (raw)</h3>
+    <div class="legend">
+      <span><span class="leg-dot" style="background:#1d9e75"></span>X</span>
+      <span><span class="leg-dot" style="background:#ba7517"></span>Y</span>
+      <span><span class="leg-dot" style="background:#a32d2d"></span>Z</span>
+    </div>
+    <div class="chart-wrap"><canvas id="accelChart" role="img" aria-label="Live line chart of raw accelerometer X Y Z values"></canvas></div>
+  </div>
+</div>
+
+<div class="raw-panel">
+  <h3>Latest reading</h3>
+  <div class="raw-grid">
+    <div class="raw-item"><div class="rl">Roll (filtered)</div><div class="rv" id="r-roll">—</div></div>
+    <div class="raw-item"><div class="rl">Pitch (filtered)</div><div class="rv" id="r-pitch">—</div></div>
+    <div class="raw-item"><div class="rl">Samples received</div><div class="rv" id="r-count">0</div></div>
+    <div class="raw-item"><div class="rl">Accel X</div><div class="rv" id="r-ax">—</div></div>
+    <div class="raw-item"><div class="rl">Accel Y</div><div class="rv" id="r-ay">—</div></div>
+    <div class="raw-item"><div class="rl">Accel Z</div><div class="rv" id="r-az">—</div></div>
+  </div>
+</div>
+
+<p class="note" id="note">Requires Chrome or Edge. Click Connect and select your Pico's COM port (115200 baud).</p>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const MAX_PTS = 100;
+const labels = [];
+let count = 0;
+
+const angleData = {
+  labels,
+  datasets:[
+    {label:'Roll',data:[],borderColor:'#378add',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:.3,borderDash:[]},
+    {label:'Pitch',data:[],borderColor:'#d4537e',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:.3,borderDash:[4,3]}
+  ]
+};
+const accelData = {
+  labels,
+  datasets:[
+    {label:'X',data:[],borderColor:'#1d9e75',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:.3,borderDash:[]},
+    {label:'Y',data:[],borderColor:'#ba7517',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:.3,borderDash:[4,3]},
+    {label:'Z',data:[],borderColor:'#a32d2d',backgroundColor:'transparent',borderWidth:1.5,pointRadius:0,tension:.3,borderDash:[2,2]}
+  ]
+};
+
+const chartOpts = (yLabel)=>({
+  responsive:true,maintainAspectRatio:false,
+  animation:{duration:0},
+  plugins:{legend:{display:false}},
+  scales:{
+    x:{display:false},
+    y:{grid:{color:'rgba(128,128,128,.12)'},ticks:{font:{size:11},color:'#888780'},title:{display:true,text:yLabel,font:{size:11},color:'#888780'}}
+  }
+});
+
+const angleChart = new Chart(document.getElementById('angleChart'), {type:'line',data:angleData,options:chartOpts('degrees')});
+const accelChart = new Chart(document.getElementById('accelChart'), {type:'line',data:accelData,options:chartOpts('raw')});
+
+function push(roll,pitch,ax,ay,az){
+  count++;
+  const t = count;
+  labels.push(t);
+  angleData.datasets[0].data.push(roll);
+  angleData.datasets[1].data.push(pitch);
+  accelData.datasets[0].data.push(ax);
+  accelData.datasets[1].data.push(ay);
+  accelData.datasets[2].data.push(az);
+  if(labels.length>MAX_PTS){
+    labels.shift();
+    angleData.datasets.forEach(d=>d.data.shift());
+    accelData.datasets.forEach(d=>d.data.shift());
+  }
+  angleChart.update('none');
+  accelChart.update('none');
+
+  document.getElementById('c-roll').textContent=roll.toFixed(1);
+  document.getElementById('c-pitch').textContent=pitch.toFixed(1);
+  document.getElementById('c-ax').textContent=ax;
+  document.getElementById('c-ay').textContent=ay;
+  document.getElementById('c-az').textContent=az;
+  document.getElementById('r-roll').textContent=roll.toFixed(2)+'°';
+  document.getElementById('r-pitch').textContent=pitch.toFixed(2)+'°';
+  document.getElementById('r-ax').textContent=ax;
+  document.getElementById('r-ay').textContent=ay;
+  document.getElementById('r-az').textContent=az;
+  document.getElementById('r-count').textContent=count;
+}
+
+let reader,port;
+
+async function connect(){
+  try{
+    port = await navigator.serial.requestPort();
+    await port.open({baudRate:115200});
+    setStatus('live');
+    document.getElementById('conn-btn').textContent='Disconnect';
+    document.getElementById('note').textContent='Streaming live data…';
+    const decoder = new TextDecoderStream();
+    port.readable.pipeTo(decoder.writable);
+    reader = decoder.readable.getReader();
+    let buf='';
+    while(true){
+      const {value,done}=await reader.read();
+      if(done)break;
+      buf+=value;
+      let nl;
+      while((nl=buf.indexOf('\n'))!==-1){
+        const line=buf.slice(0,nl).trim();
+        buf=buf.slice(nl+1);
+        const parts=line.split(',');
+        if(parts.length===5){
+          const [roll,pitch,ax,ay,az]=parts.map(Number);
+          if(!isNaN(roll))push(roll,pitch,ax,ay,az);
+        }
+      }
+    }
+  }catch(e){
+    if(e.name!=='NotFoundError') setStatus('error: '+e.message);
+    else setStatus('disconnected');
+    document.getElementById('conn-btn').textContent='Connect';
+    document.getElementById('note').textContent='Disconnected. Click Connect to try again.';
+  }
+}
+
+async function disconnect(){
+  try{if(reader)await reader.cancel();if(port)await port.close();}catch(_){}
+  setStatus('disconnected');
+  document.getElementById('conn-btn').textContent='Connect';
+  document.getElementById('note').textContent='Disconnected.';
+}
+
+function setStatus(s){
+  const b=document.getElementById('status-badge');
+  b.textContent=s;
+  b.className='badge'+(s==='live'?' live':'');
+}
+
+let connected=false;
+document.getElementById('conn-btn').onclick=async()=>{
+  connected=!connected;
+  if(connected) await connect(); else await disconnect();
+  connected=document.getElementById('conn-btn').textContent==='Disconnect';
+};
+
+document.getElementById('clear-btn').onclick=()=>{
+  labels.length=0;count=0;
+  angleData.datasets.forEach(d=>d.data=[]);
+  accelData.datasets.forEach(d=>d.data=[]);
+  angleChart.update();accelChart.update();
+  ['c-roll','c-pitch','c-ax','c-ay','c-az','r-roll','r-pitch','r-ax','r-ay','r-az'].forEach(id=>document.getElementById(id).textContent='—');
+  document.getElementById('r-count').textContent='0';
+};
+
+if(!('serial' in navigator)){
+  document.getElementById('conn-btn').disabled=true;
+  document.getElementById('note').textContent='Web Serial not supported. Open this page in Chrome or Edge on desktop.';
+}
+
+// demo mode if not connected after 3s
+setTimeout(()=>{
+  if(count===0 && !connected){
+    document.getElementById('note').textContent='Demo mode (simulated data) — connect your Pico to see real readings.';
+    let t=0;
+    setInterval(()=>{
+      if(connected||count>10&&document.getElementById('conn-btn').textContent==='Disconnect')return;
+      t+=0.05;
+      const roll=15*Math.sin(t)+0.3*(Math.random()-.5);
+      const pitch=8*Math.cos(t*.7)+0.3*(Math.random()-.5);
+      const ax=Math.round(1000*Math.sin(t)+50*(Math.random()-.5));
+      const ay=Math.round(800*Math.cos(t*.8)+50*(Math.random()-.5));
+      const az=Math.round(16000+200*(Math.random()-.5));
+      push(roll,pitch,ax,ay,az);
+    },20);
+  }
+},3000);
+</script>
