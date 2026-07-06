@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CubeSat Telemetry (Home Dashboard)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#000;--bg2:#0a0a0a;
+  --border:rgba(255,255,255,0.13);--border2:rgba(255,255,255,0.08);
+  --text:#f2f2f2;--dim:#9a9a9a;--dim2:#5a5a5a;
+  --sans:'Inter',system-ui,-apple-system,sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex;flex-direction:column;font-size:13px;}
+.topbar{height:42px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;gap:12px;}
+.tb-left{display:flex;align-items:center;gap:14px;min-width:0;}
+.tb-title{font-size:16px;font-weight:700;letter-spacing:1px;color:#fff;white-space:nowrap;}
+.tb-sep{width:1px;height:16px;background:var(--border);flex-shrink:0;}
+.tb-tag{font-size:11px;font-weight:500;letter-spacing:0.5px;color:var(--dim);white-space:nowrap;}
+.tb-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.8s infinite;flex-shrink:0;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.25;}}
+.clock{font-family:var(--mono);font-size:13px;letter-spacing:1px;color:#fff;white-space:nowrap;}
+.esp-config{display:flex;align-items:center;gap:6px;}
+.esp-config input{background:#141414;border:1px solid var(--border2);border-radius:4px;color:#fff;font-family:var(--mono);font-size:11px;padding:4px 8px;width:130px;}
+.esp-config button{background:#fff;color:#000;border:none;border-radius:4px;font-family:var(--sans);font-size:11px;font-weight:600;padding:5px 10px;cursor:pointer;}
+.esp-config button:hover{background:#ddd;}
+.esp-config-label{font-size:10px;color:var(--dim2);letter-spacing:0.5px;}
+
+.body{display:flex;flex:1;overflow:hidden;min-height:0;}
+
+.col-3d{width:320px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden;}
+.panel-label{font-size:11px;font-weight:600;letter-spacing:0.5px;color:var(--dim);padding:7px 14px;border-bottom:1px solid var(--border2);flex-shrink:0;display:flex;justify-content:space-between;}
+.panel-label span{font-family:var(--mono);font-weight:400;color:var(--dim2);}
+#canvasContainer{flex:1;position:relative;min-height:0;border-bottom:1px solid var(--border2);background:#000;}
+#canvasContainer canvas{display:block;width:100%!important;height:100%!important;}
+.hud-mini{position:absolute;bottom:8px;right:10px;font-family:var(--mono);font-size:11px;letter-spacing:0.5px;color:rgba(255,255,255,0.45);text-align:right;line-height:1.5;pointer-events:none;}
+.calib-strip{padding:8px 12px;flex-shrink:0;border-bottom:1px solid var(--border);}
+.calib-title{font-size:9.5px;font-weight:600;color:var(--dim2);letter-spacing:0.5px;margin-bottom:6px;}
+.calib-row{display:flex;gap:6px;flex-wrap:wrap;}
+.calib-btn{flex:1;min-width:70px;padding:6px 4px;font-size:10px;font-weight:600;font-family:var(--sans);letter-spacing:0.3px;text-align:center;
+  background:#141414;border:1px solid var(--border2);border-radius:5px;color:var(--dim);cursor:pointer;user-select:none;transition:all 0.15s;}
+.calib-btn:hover{border-color:var(--dim2);}
+.calib-btn.on{background:#fff;color:#000;border-color:#fff;}
+.calib-hint{font-size:9px;color:var(--dim2);margin-top:6px;line-height:1.4;}
+
+.col-cam{width:320px;flex-shrink:0;display:flex;flex-direction:column;border-left:1px solid var(--border);overflow:hidden;}
+.cam-view{flex:1;position:relative;overflow:hidden;background:#000;min-height:0;}
+#camFeed{height:100%;width:100%;object-fit:contain;display:block;opacity:0;transition:opacity 0.4s;}
+#cam-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+#cam-msg{font-family:var(--mono);font-size:10px;color:var(--dim2);letter-spacing:1px;}
+.corner{position:absolute;width:12px;height:12px;pointer-events:none;border-color:rgba(255,255,255,0.15);}
+.c-tl{top:6px;left:6px;border-top:1px solid;border-left:1px solid;}
+.c-tr{top:6px;right:6px;border-top:1px solid;border-right:1px solid;}
+.c-bl{bottom:6px;left:6px;border-bottom:1px solid;border-left:1px solid;}
+.c-br{bottom:6px;right:6px;border-bottom:1px solid;border-right:1px solid;}
+#cam-live-dot{display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:rgba(255,255,255,0.4);letter-spacing:1px;}
+.cam-info{padding:8px 14px;font-size:10px;color:var(--dim2);border-top:1px solid var(--border2);flex-shrink:0;font-family:var(--mono);}
+.cam-info a{color:#fff;}
+
+.col-data{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr 190px 60px 108px;overflow:hidden;min-height:0;}
+.card{border-right:1px solid var(--border2);border-bottom:1px solid var(--border2);display:flex;flex-direction:column;overflow:hidden;min-height:0;}
+.col-data>.card:nth-child(3n){border-right:none;}
+.card.span3{grid-column:1/4;border-right:none;}
+.card-h{font-size:11px;font-weight:600;letter-spacing:0.5px;color:var(--dim);padding:6px 14px;border-bottom:1px solid var(--border2);flex-shrink:0;display:flex;justify-content:space-between;}
+.card-h span{font-family:var(--mono);font-weight:400;font-size:10px;color:var(--dim2);}
+.card-body{flex:1;padding:6px 14px;overflow:hidden;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:3px;}
+.row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;}
+.rk{font-size:12px;color:var(--dim);font-weight:500;}
+.rv{font-family:var(--mono);font-size:15px;font-weight:500;color:#fff;}
+.rv.dim{color:var(--dim);font-size:13px;}
+.rv.warn{color:#bbb;}
+.stat-trio{display:flex;justify-content:space-between;gap:8px;padding:2px 0 8px;}
+.stat-item{flex:1;text-align:center;border-right:1px solid var(--border2);}
+.stat-item:last-child{border-right:none;}
+.stat-num{font-family:var(--mono);font-size:24px;font-weight:600;color:#fff;line-height:1;}
+.stat-unit{font-size:10px;color:var(--dim2);font-weight:500;margin-top:4px;}
+.chart-wrap{height:44px;position:relative;margin-top:4px;}
+.rings{display:flex;justify-content:space-around;align-items:center;flex:1;}
+.ring-item{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.ring-lbl{font-size:10px;font-weight:600;letter-spacing:0.5px;color:var(--dim2);}
+.gps-status{font-size:11px;font-weight:600;letter-spacing:0.5px;padding:3px 8px;border-radius:4px;background:rgba(255,255,255,0.06);color:var(--dim);display:inline-block;margin-bottom:4px;}
+
+.map-card{padding:0!important;position:relative;}
+.map-frame-wrap{flex:1;position:relative;min-height:0;}
+#gpsMap{width:100%;height:100%;border:0;filter:grayscale(0.4) invert(0.92) contrast(0.9);}
+.map-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000;pointer-events:none;}
+.map-overlay span{font-size:11px;color:var(--dim2);letter-spacing:1px;}
+.map-coords{position:absolute;bottom:8px;left:10px;font-family:var(--mono);font-size:10px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.5);padding:3px 8px;border-radius:4px;pointer-events:none;}
+
+.health-row{display:flex;gap:22px;align-items:center;height:100%;padding:0 14px;overflow:hidden;}
+.health-item{display:flex;flex-direction:column;gap:1px;}
+.health-item .rk{font-size:9.5px;}
+.health-item .rv{font-size:13px;}
+
+.console-body{flex:1;overflow-y:auto;font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.6;white-space:pre-wrap;word-break:break-all;padding:4px 14px;min-height:0;}
+.console-body::-webkit-scrollbar{width:3px;}
+.console-body::-webkit-scrollbar-thumb{background:var(--border);}
+.log-w{color:#fff;display:block;}.log-d{color:var(--dim2);display:block;}
+
+.statusbar{height:24px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;}
+.sb-item{font-size:10px;font-weight:500;letter-spacing:0.5px;color:var(--dim2);display:flex;align-items:center;gap:5px;}
+.sb-dot{width:5px;height:5px;border-radius:50%;background:#fff;}
+.sb-dot.off{background:var(--dim2);}
+
+@media (max-width: 900px) {
+  html,body{height:auto;overflow-y:auto;overflow-x:hidden;}
+  body{font-size:14px;}
+  .topbar{height:auto;flex-wrap:wrap;padding:8px 12px;gap:6px;}
+  .body{flex-direction:column;overflow:visible;height:auto;}
+  .col-3d{width:100%;border-right:none;border-bottom:1px solid var(--border);}
+  #canvasContainer{height:260px;flex:none;}
+  .calib-row{flex-wrap:wrap;}
+  .calib-btn{min-width:45%;}
+  .col-cam{width:100%;border-left:none;border-top:1px solid var(--border);order:99;}
+  .cam-view{height:240px;flex:none;}
+  .col-data{display:flex;flex-direction:column;grid-template-columns:none;grid-template-rows:none;height:auto;}
+  .card{border-right:none!important;min-height:150px;}
+  .card.span3{grid-column:auto;}
+  .card-body{padding:10px 16px;}
+  .stat-num{font-size:22px;}
+  .health-row{flex-wrap:wrap;gap:14px 22px;height:auto;padding:10px 14px;}
+  .console-body{max-height:160px;}
+  .map-frame-wrap{height:220px;}
+  .statusbar{height:auto;flex-wrap:wrap;padding:6px 12px;gap:6px 14px;}
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="tb-left">
+    <span class="tb-title">CubeSat Telemetry</span>
+    <div class="tb-sep"></div>
+    <span class="tb-tag">Home Dashboard · reads live data from your ESP32</span>
+  </div>
+  <div class="tb-right">
+    <div class="esp-config">
+      <span class="esp-config-label">ESP32 IP</span>
+      <input type="text" id="esp-ip-input" placeholder="192.168.137.223">
+      <button id="esp-ip-save">Save</button>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="live-dot"></div>
+    <span class="tb-tag" id="link-tag">Connecting...</span>
+    <div class="tb-sep"></div>
+    <span class="clock" id="clk">UTC 00:00:00</span>
+  </div>
+</div>
+
+<div class="body">
+
+  <div class="col-3d">
+    <div class="panel-label">3D Attitude <span id="fps-hud">60 FPS</span></div>
+    <div id="canvasContainer">
+      <div class="hud-mini" id="rot-hud">P: 0.0&nbsp;&nbsp;R: 0.0&nbsp;&nbsp;Y: 0.0</div>
+    </div>
+    <div class="calib-strip">
+      <div class="calib-title">Orientation Calibration (live, no reflash needed)</div>
+      <div class="calib-row">
+        <div class="calib-btn" id="btn-swap">Swap P/R</div>
+        <div class="calib-btn" id="btn-invroll">Invert Roll</div>
+        <div class="calib-btn" id="btn-invpitch">Invert Pitch</div>
+        <div class="calib-btn" id="btn-invyaw">Invert Yaw</div>
+      </div>
+      <div class="calib-hint">Tilt the board forward — if the model doesn't match, toggle buttons above until it does. Saved automatically in this browser.</div>
+    </div>
+  </div>
+
+  <div class="col-data">
+
+    <div class="card">
+      <div class="card-h">Barometer <span>BMP280</span></div>
+      <div class="card-body">
+        <div class="stat-trio">
+          <div class="stat-item"><div class="stat-num" id="alt">--</div><div class="stat-unit">Alt (m)</div></div>
+          <div class="stat-item"><div class="stat-num" id="temp">--</div><div class="stat-unit">Temp (°C)</div></div>
+          <div class="stat-item"><div class="stat-num" id="vrate">--</div><div class="stat-unit">V-Rate (m/s)</div></div>
+        </div>
+        <div class="row"><span class="rk">Pressure</span><span class="rv dim" id="press">--</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Accelerometer <span>ICM-20948</span></div>
+      <div class="card-body">
+        <div class="row"><span class="rk">X</span><span class="rv" id="ax">--</span></div>
+        <div class="row"><span class="rk">Y</span><span class="rv" id="ay">--</span></div>
+        <div class="row"><span class="rk">Z</span><span class="rv" id="az">--</span></div>
+        <div class="row"><span class="rk">Vibration</span><span class="rv dim" id="vib">--</span></div>
+        <div class="chart-wrap"><canvas id="accelChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Attitude <span>calibrated</span></div>
+      <div class="card-body">
+        <div class="rings">
+          <div class="ring-item">
+            <svg width="50" height="50" viewBox="0 0 48 48">
+              <circle cx="24" cy="24" r="19" stroke="rgba(255,255,255,0.08)" stroke-width="2.5" fill="none"/>
+              <circle cx="24" cy="24" r="19" stroke="#fff" stroke-width="2" fill="none" stroke-dasharray="119" id="r-roll" stroke-dashoffset="119" stroke-linecap="round" transform="rotate(-90 24 24)"/>
+              <text x="24" y="28" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#fff" id="rv-roll">0°</text>
+            </svg>
+            <span class="ring-lbl">Roll</span>
+          </div>
+          <div class="ring-item">
+            <svg width="50" height="50" viewBox="0 0 48 48">
+              <circle cx="24" cy="24" r="19" stroke="rgba(255,255,255,0.08)" stroke-width="2.5" fill="none"/>
+              <circle cx="24" cy="24" r="19" stroke="#bbb" stroke-width="2" fill="none" stroke-dasharray="119" id="r-pitch" stroke-dashoffset="119" stroke-linecap="round" transform="rotate(-90 24 24)"/>
+              <text x="24" y="28" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#bbb" id="rv-pitch">0°</text>
+            </svg>
+            <span class="ring-lbl">Pitch</span>
+          </div>
+          <div class="ring-item">
+            <svg width="50" height="50" viewBox="0 0 48 48">
+              <circle cx="24" cy="24" r="19" stroke="rgba(255,255,255,0.08)" stroke-width="2.5" fill="none"/>
+              <circle cx="24" cy="24" r="19" stroke="#777" stroke-width="2" fill="none" stroke-dasharray="119" id="r-yaw" stroke-dashoffset="119" stroke-linecap="round" transform="rotate(-90 24 24)"/>
+              <text x="24" y="28" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#888" id="rv-yaw">0°</text>
+            </svg>
+            <span class="ring-lbl">Yaw</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Gyroscope <span>ICM-20948</span></div>
+      <div class="card-body">
+        <div class="row"><span class="rk">X</span><span class="rv" id="gx">--</span></div>
+        <div class="row"><span class="rk">Y</span><span class="rv" id="gy">--</span></div>
+        <div class="row"><span class="rk">Z</span><span class="rv" id="gz">--</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Power <span>INA219</span></div>
+      <div class="card-body">
+        <div class="row"><span class="rk">Bus Voltage</span><span class="rv" id="bvolt">--</span></div>
+        <div class="row"><span class="rk">Current</span><span class="rv" id="bcurr">--</span></div>
+        <div class="row"><span class="rk">Power</span><span class="rv" id="bpow">--</span></div>
+        <div class="chart-wrap"><canvas id="voltChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">GPS <span id="gps-badge">Not Connected</span></div>
+      <div class="card-body">
+        <div class="gps-status" id="gps-status">NO MODULE DETECTED</div>
+        <div class="row"><span class="rk">Latitude</span><span class="rv" id="gps-lat">--</span></div>
+        <div class="row"><span class="rk">Longitude</span><span class="rv" id="gps-lon">--</span></div>
+        <div class="row"><span class="rk">Satellites</span><span class="rv" id="gps-sats">--</span></div>
+        <div class="row"><span class="rk">HDOP</span><span class="rv dim" id="gps-hdop">--</span></div>
+      </div>
+    </div>
+
+    <!-- NEW: live Google Maps window for the NEO-6M GPS fix -->
+    <div class="card map-card span3">
+      <div class="card-h">GPS Location <span id="map-status">No fix</span></div>
+      <div class="map-frame-wrap">
+        <iframe id="gpsMap" src="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <div class="map-overlay" id="map-overlay"><span>Waiting for GPS fix to load map...</span></div>
+        <div class="map-coords" id="map-coords" style="display:none;"></div>
+      </div>
+    </div>
+
+    <div class="card span3">
+      <div class="card-h">System Health</div>
+      <div class="health-row">
+        <div class="health-item"><span class="rk">WiFi RSSI</span><span class="rv" id="rssi">--</span></div>
+        <div class="health-item"><span class="rk">CPU Temp</span><span class="rv warn" id="cputemp">--</span></div>
+        <div class="health-item"><span class="rk">Uptime</span><span class="rv" id="upt">--</span></div>
+        <div class="health-item"><span class="rk">Errors / Reconnects</span><span class="rv dim" id="errsline">--</span></div>
+      </div>
+    </div>
+
+    <div class="card span3">
+      <div class="card-h">Console <span>Live</span></div>
+      <div class="console-body" id="con"><span class="log-w">// CubeSat OS v1.4 — home dashboard, GPS map</span>
+<span class="log-d">[BOOT] Set your ESP32 IP above, then waiting for first packet...</span>
+</div>
+    </div>
+
+  </div>
+
+  <div class="col-cam">
+    <div class="panel-label">Pi Camera <span id="cam-status">Connecting...</span></div>
+    <div class="cam-view">
+      <img id="camFeed" alt=""/>
+      <div id="cam-overlay"><span id="cam-msg">Connecting...</span></div>
+      <div class="corner c-tl"></div><div class="corner c-tr"></div>
+      <div class="corner c-bl"></div><div class="corner c-br"></div>
+      <div id="cam-live-dot">● LIVE</div>
+    </div>
+    <div class="cam-info">
+      192.168.137.119:5000 &nbsp;
+      <a href="http://192.168.137.119:5000/video_feed" target="_blank" rel="noopener">test directly ↗</a>
+    </div>
+  </div>
+
+</div>
+
+<div class="statusbar">
+  <div class="sb-item"><div class="sb-dot off" id="dot-attitude"></div>Attitude</div>
+  <div class="sb-item"><div class="sb-dot off" id="dot-baro"></div>Barometer</div>
+  <div class="sb-item"><div class="sb-dot off" id="dot-wifi"></div>WiFi</div>
+  <div class="sb-item"><div class="sb-dot off" id="dot-power"></div>Power</div>
+  <div class="sb-item"><div class="sb-dot off" id="dot-gps"></div>GPS</div>
+  <div class="sb-item">Frame <span id="fc" style="color:#fff">0</span></div>
+  <div class="sb-item" style="color:#444">v1.4 · home-dashboard build</div>
+</div>
+
+<script>
+// ============ ESP32 IP CONFIG (this is what makes it a standalone "home" dashboard) ============
+// Unlike the version served BY the ESP32 (which used relative fetch('/data')
+// because it shared the same origin), this page can be opened anywhere --
+// as a local file, or hosted on any PC on your network. So it needs to be
+// told which IP to talk to. Saved in this browser via localStorage.
+let ESP32_IP = localStorage.getItem('cubesat_esp32_ip') || '192.168.137.223';
+document.getElementById('esp-ip-input').value = ESP32_IP;
+document.getElementById('esp-ip-input').placeholder = ESP32_IP;
+
+document.getElementById('esp-ip-save').onclick = () => {
+  const val = document.getElementById('esp-ip-input').value.trim();
+  if (val) {
+    ESP32_IP = val;
+    localStorage.setItem('cubesat_esp32_ip', ESP32_IP);
+    document.getElementById('link-tag').textContent = 'Reconnecting...';
+  }
+};
+document.getElementById('esp-ip-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('esp-ip-save').click();
+});
+
+// ============ CLOCK ============
+function tick(){
+  const n=new Date(),p=v=>String(v).padStart(2,'0');
+  document.getElementById('clk').textContent=`UTC ${p(n.getUTCHours())}:${p(n.getUTCMinutes())}:${p(n.getUTCSeconds())}`;
+}
+setInterval(tick,1000);tick();
+
+// ============ ORIENTATION CALIBRATION (persisted in this browser) ============
+let calib = { swap:false, invRoll:false, invPitch:false, invYaw:false };
+try {
+  const saved = localStorage.getItem('cubesat_calib');
+  if (saved) calib = JSON.parse(saved);
+} catch(e) {}
+function saveCalib(){ try{ localStorage.setItem('cubesat_calib', JSON.stringify(calib)); }catch(e){} }
+function refreshCalibButtons(){
+  document.getElementById('btn-swap').classList.toggle('on', calib.swap);
+  document.getElementById('btn-invroll').classList.toggle('on', calib.invRoll);
+  document.getElementById('btn-invpitch').classList.toggle('on', calib.invPitch);
+  document.getElementById('btn-invyaw').classList.toggle('on', calib.invYaw);
+}
+document.getElementById('btn-swap').onclick = () => { calib.swap = !calib.swap; saveCalib(); refreshCalibButtons(); };
+document.getElementById('btn-invroll').onclick = () => { calib.invRoll = !calib.invRoll; saveCalib(); refreshCalibButtons(); };
+document.getElementById('btn-invpitch').onclick = () => { calib.invPitch = !calib.invPitch; saveCalib(); refreshCalibButtons(); };
+document.getElementById('btn-invyaw').onclick = () => { calib.invYaw = !calib.invYaw; saveCalib(); refreshCalibButtons(); };
+refreshCalibButtons();
+
+function applyCalib(rawRoll, rawPitch, rawYaw){
+  let r = rawRoll, p = rawPitch, y = rawYaw;
+  if (calib.swap) { const t = r; r = p; p = t; }
+  if (calib.invRoll)  r = -r;
+  if (calib.invPitch) p = -p;
+  if (calib.invYaw)   y = -y;
+  return {r, p, y};
+}
+
+// ============ THREE.JS SCENE ============
+const cont=document.getElementById('canvasContainer');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x000000);
+const cam=new THREE.PerspectiveCamera(38,1,0.1,200);
+cam.position.set(3.6,2.6,4.0);
+cam.lookAt(0,0.2,0);
+const ren=new THREE.WebGLRenderer({antialias:true});
+ren.setPixelRatio(window.devicePixelRatio);
+ren.shadowMap.enabled=true;
+ren.shadowMap.type=THREE.PCFSoftShadowMap;
+cont.appendChild(ren.domElement);
+function resize(){
+  const w=cont.clientWidth,h=cont.clientHeight;
+  if(w===0||h===0)return;
+  cam.aspect=w/h;cam.updateProjectionMatrix();ren.setSize(w,h);
+}
+resize();window.addEventListener('resize',resize);
+scene.add(new THREE.AmbientLight(0x151515,4));
+const key=new THREE.DirectionalLight(0xffffff,2.8);
+key.position.set(5,9,6);key.castShadow=true;
+key.shadow.mapSize.width=1024;key.shadow.mapSize.height=1024;
+scene.add(key);
+const fill=new THREE.DirectionalLight(0xffffff,0.5);fill.position.set(-6,2,-4);scene.add(fill);
+const rim=new THREE.DirectionalLight(0xffffff,0.25);rim.position.set(0,-3,-5);scene.add(rim);
+const topLight=new THREE.DirectionalLight(0xffffff,0.6);topLight.position.set(0,10,0);scene.add(topLight);
+const grid=new THREE.GridHelper(16,32,0x181818,0x0c0c0c);grid.position.y=-1.85;scene.add(grid);
+
+const sat=new THREE.Group();scene.add(sat);
+const chassisMat=new THREE.MeshStandardMaterial({color:0x080808,roughness:0.12,metalness:0.95});
+const railMat   =new THREE.MeshStandardMaterial({color:0x050505,roughness:0.5,metalness:0.6});
+const solarMat  =new THREE.MeshStandardMaterial({color:0x04090f,roughness:0.06,metalness:0.55});
+const lidMat    =new THREE.MeshStandardMaterial({color:0x181818,roughness:0.18,metalness:0.98});
+const brassMat  =new THREE.MeshStandardMaterial({color:0x4a3a10,roughness:0.25,metalness:1.0});
+const metalMat  =new THREE.MeshStandardMaterial({color:0x777777,roughness:0.3,metalness:1.0});
+const antMat    =new THREE.MeshStandardMaterial({color:0x0d0d0d,roughness:0.65,metalness:0.2});
+const gpsCeramic=new THREE.MeshStandardMaterial({color:0xc8a07a,roughness:0.75,metalness:0.05});
+const gpsBase   =new THREE.MeshStandardMaterial({color:0x1a1a1a,roughness:0.45,metalness:0.6});
+const topSolMat =new THREE.MeshStandardMaterial({color:0x0e0e0a,roughness:0.15,metalness:0.9});
+const body=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),chassisMat);
+body.castShadow=true;sat.add(body);
+sat.add(new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002,1.002,1.002)),
+  new THREE.LineBasicMaterial({color:0x3a3a3a,transparent:true,opacity:0.9})));
+[[-0.5,-0.5],[-0.5,0.5],[0.5,-0.5],[0.5,0.5]].forEach(([x,z])=>{
+  const r=new THREE.Mesh(new THREE.BoxGeometry(0.042,1.01,0.042),railMat);
+  r.position.set(x,0,z);sat.add(r);
+});
+function makeSolarPanel(wide,tall){
+  const g=new THREE.Group();
+  const p=new THREE.Mesh(new THREE.BoxGeometry(wide,tall,0.025),solarMat);
+  g.add(p);
+  const verts=[];
+  for(let i=1;i<14;i++){
+    const y=-tall/2+(i/14)*tall;
+    verts.push(-wide/2+0.015,y,0.014, wide/2-0.015,y,0.014);
+  }
+  verts.push(0,-tall/2+0.015,0.014, 0,tall/2-0.015,0.014);
+  const lg=new THREE.BufferGeometry();
+  lg.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  g.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0x0f1e2a,transparent:true,opacity:0.8})));
+  const bz=new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(wide+0.01,tall+0.01,0.028)),
+    new THREE.LineBasicMaterial({color:0x252525,transparent:true,opacity:0.6}));
+  g.add(bz);
+  return g;
+}
+const fp=makeSolarPanel(0.84,0.80);fp.position.set(0,0,0.513);sat.add(fp);
+const bp=makeSolarPanel(0.84,0.80);bp.position.set(0,0,-0.513);sat.add(bp);
+const rp=makeSolarPanel(0.84,0.80);rp.rotation.y=Math.PI/2;rp.position.set(0.513,0,0);sat.add(rp);
+const lp=makeSolarPanel(0.84,0.80);lp.rotation.y=Math.PI/2;lp.position.set(-0.513,0,0);sat.add(lp);
+const topSol=new THREE.Mesh(new THREE.BoxGeometry(0.50,0.025,0.42),topSolMat);
+topSol.rotation.x=Math.PI/2;topSol.position.set(-0.08,0.513,0.02);sat.add(topSol);
+const tsv=[];
+for(let i=1;i<7;i++){const x=-0.25+(i/7)*0.50;tsv.push(x,0.527,-0.21,x,0.527,0.21);}
+for(let j=1;j<4;j++){const z=-0.21+(j/4)*0.42;tsv.push(-0.25,0.527,z,0.25,0.527,z);}
+const tsg=new THREE.BufferGeometry();tsg.setAttribute('position',new THREE.Float32BufferAttribute(tsv,3));
+sat.add(new THREE.LineSegments(tsg,new THREE.LineBasicMaterial({color:0x1a1a0a,transparent:true,opacity:0.6})));
+const lid=new THREE.Mesh(new THREE.BoxGeometry(0.97,0.016,0.97),lidMat);
+lid.position.y=0.508;sat.add(lid);
+sat.add(new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(0.975,0.018,0.975)),
+  new THREE.LineBasicMaterial({color:0x444444,transparent:true,opacity:0.5})));
+const gpsGrp=new THREE.Group();
+const patch=new THREE.Mesh(new THREE.BoxGeometry(0.13,0.025,0.13),gpsCeramic);
+patch.position.y=0.02;gpsGrp.add(patch);
+const gpsBp=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.016,0.15),gpsBase);
+gpsGrp.add(gpsBp);
+const scrw=new THREE.Mesh(new THREE.CylinderGeometry(0.007,0.007,0.03,8),
+  new THREE.MeshStandardMaterial({color:0x333333,roughness:0.5}));
+scrw.position.y=0.028;gpsGrp.add(scrw);
+gpsGrp.position.set(0.1,0.524,0.04);sat.add(gpsGrp);
+function makeAntenna(height){
+  const g=new THREE.Group();
+  const nut=new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.038,0.038,6),brassMat);
+  nut.position.y=0.019;g.add(nut);
+  const wash=new THREE.Mesh(new THREE.CylinderGeometry(0.030,0.030,0.01,12),metalMat);
+  wash.position.y=0.044;g.add(wash);
+  const con=new THREE.Mesh(new THREE.CylinderGeometry(0.024,0.024,0.055,10),metalMat);
+  con.position.y=0.072;g.add(con);
+  const knurl=new THREE.Mesh(new THREE.CylinderGeometry(0.030,0.028,0.045,12),
+    new THREE.MeshStandardMaterial({color:0x111111,roughness:0.8,metalness:0.4}));
+  knurl.position.y=0.108;g.add(knurl);
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.020,height,9),antMat);
+  shaft.position.y=0.13+height/2;g.add(shaft);
+  const tip=new THREE.Mesh(new THREE.SphereGeometry(0.016,8,6),antMat);
+  tip.position.y=0.13+height;g.add(tip);
+  return g;
+}
+const ant1=makeAntenna(0.52);
+ant1.position.set(-0.18,0.518,0.05);sat.add(ant1);
+const ant2=makeAntenna(0.68);
+ant2.position.set(0.06,0.518,0.05);sat.add(ant2);
+const tgl=new THREE.PointLight(0xffffff,0.12,2.2);
+tgl.position.set(0,-0.9,0);sat.add(tgl);
+
+// ============ CHART.JS: ACCEL + VOLTAGE ============
+const N=40;
+const acx=document.getElementById('accelChart').getContext('2d');
+const acChart=new Chart(acx,{
+  type:'line',
+  data:{ labels:Array(N).fill(''),
+    datasets:[
+      {data:Array(N).fill(0),borderColor:'#ffffff',borderWidth:1.5,fill:false,tension:0.3,pointRadius:0},
+      {data:Array(N).fill(0),borderColor:'#888',borderWidth:1,fill:false,tension:0.3,pointRadius:0},
+      {data:Array(N).fill(1),borderColor:'#444',borderWidth:1,fill:false,tension:0.3,pointRadius:0}
+    ]},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{display:false},tooltip:{enabled:false}},
+    scales:{x:{display:false},y:{display:false}}}
+});
+const vcx=document.getElementById('voltChart').getContext('2d');
+const voltChart=new Chart(vcx,{
+  type:'line',
+  data:{ labels:Array(N).fill(''),
+    datasets:[{data:Array(N).fill(5),borderColor:'#ffffff',borderWidth:1.5,fill:'start',
+       backgroundColor:'rgba(255,255,255,0.06)',tension:0.3,pointRadius:0}]},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{display:false},tooltip:{enabled:false}},
+    scales:{x:{display:false},y:{display:false}}}
+});
+
+// ============ GPS MAP (Google Maps embed, no API key needed) ============
+let lastMapLat = null, lastMapLon = null;
+let lastMapUpdateMs = 0;
+const MAP_UPDATE_INTERVAL_MS = 6000; // throttle reloads -- an iframe reload every fetch would flicker
+
+function updateGpsMap(d) {
+  if (!d.gps_module) {
+    document.getElementById('map-status').textContent = 'No module';
+    document.getElementById('map-overlay').style.display = 'flex';
+    document.getElementById('map-overlay').querySelector('span').textContent = 'No GPS module detected';
+    document.getElementById('map-coords').style.display = 'none';
+    return;
+  }
+  if (!d.gps_fix) {
+    document.getElementById('map-status').textContent = 'Searching';
+    document.getElementById('map-overlay').style.display = 'flex';
+    document.getElementById('map-overlay').querySelector('span').textContent = 'Searching for satellites...';
+    document.getElementById('map-coords').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('map-status').textContent = 'Live fix';
+  document.getElementById('map-coords').style.display = 'block';
+  document.getElementById('map-coords').textContent =
+    d.gps_lat.toFixed(6) + ', ' + d.gps_lon.toFixed(6) + '  ·  ' + d.gps_sats + ' sats';
+
+  const now = Date.now();
+  const movedEnough = (lastMapLat === null) ||
+    (Math.abs(d.gps_lat - lastMapLat) > 0.00005 || Math.abs(d.gps_lon - lastMapLon) > 0.00005);
+
+  if (movedEnough && (now - lastMapUpdateMs > MAP_UPDATE_INTERVAL_MS || lastMapLat === null)) {
+    document.getElementById('gpsMap').src =
+      `https://maps.google.com/maps?q=${d.gps_lat},${d.gps_lon}&z=17&output=embed`;
+    document.getElementById('map-overlay').style.display = 'none';
+    lastMapLat = d.gps_lat; lastMapLon = d.gps_lon; lastMapUpdateMs = now;
+  }
+}
+
+// ============ REAL TELEMETRY: sequential fetch loop ============
+let latest = null;
+let prevAltitude = null, prevAltTime = null;
+let vibBuffer = [];
+let consoleTick = 0;
+let targetPitch = 0, targetRoll = 0, targetYaw = 0;
+let curPitch = 0, curRoll = 0, curYaw = 0;
+const SMOOTHING = 0.15;
+
+function setDotClass(id, ok) {
+  const el = document.getElementById(id);
+  if (ok) el.classList.remove('off'); else el.classList.add('off');
+}
+function setRing(circleId, textId, valueDeg, range) {
+  const clamped = Math.max(-range, Math.min(range, valueDeg));
+  const frac = Math.abs(clamped) / range;
+  const offset = 119 - frac * 119;
+  document.getElementById(circleId).setAttribute('stroke-dashoffset', offset.toFixed(1));
+  document.getElementById(textId).textContent = valueDeg.toFixed(1) + '°';
+}
+function setYawRing(yawDeg) {
+  const norm = ((yawDeg % 360) + 360) % 360;
+  const offset = 119 - (norm / 360) * 119;
+  document.getElementById('r-yaw').setAttribute('stroke-dashoffset', offset.toFixed(1));
+  document.getElementById('rv-yaw').textContent = norm.toFixed(1) + '°';
+}
+function formatUptime(s) {
+  const p = v => String(v).padStart(2, '0');
+  return `${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(Math.floor(s % 60))}`;
+}
+
+function updateUI(d) {
+  document.getElementById('alt').textContent = d.bmp_altitude.toFixed(1);
+  document.getElementById('temp').textContent = d.bmp_temp.toFixed(1);
+  document.getElementById('press').textContent = d.bmp_pressure.toFixed(1) + ' hPa';
+
+  const now = Date.now();
+  if (prevAltitude !== null) {
+    const dt = (now - prevAltTime) / 1000;
+    if (dt > 0.05) {
+      const rate = (d.bmp_altitude - prevAltitude) / dt;
+      document.getElementById('vrate').textContent = (rate >= 0 ? '+' : '') + rate.toFixed(1);
+      prevAltitude = d.bmp_altitude; prevAltTime = now;
+    }
+  } else { prevAltitude = d.bmp_altitude; prevAltTime = now; }
+
+  document.getElementById('ax').textContent = (d.acc_x >= 0 ? '+' : '') + d.acc_x.toFixed(3) + ' g';
+  document.getElementById('ay').textContent = (d.acc_y >= 0 ? '+' : '') + d.acc_y.toFixed(3) + ' g';
+  document.getElementById('az').textContent = (d.acc_z >= 0 ? '+' : '') + d.acc_z.toFixed(3) + ' g';
+
+  const mag = Math.sqrt(d.acc_x*d.acc_x + d.acc_y*d.acc_y + d.acc_z*d.acc_z);
+  vibBuffer.push(mag - 1.0);
+  if (vibBuffer.length > 20) vibBuffer.shift();
+  const meanDev = vibBuffer.reduce((a,b)=>a+b,0)/vibBuffer.length;
+  const variance = vibBuffer.reduce((a,b)=>a+(b-meanDev)*(b-meanDev),0)/vibBuffer.length;
+  document.getElementById('vib').textContent = (Math.sqrt(variance)*1000).toFixed(3) + ' mg';
+
+  acChart.data.datasets[0].data.push(d.acc_x);
+  acChart.data.datasets[1].data.push(d.acc_y);
+  acChart.data.datasets[2].data.push(d.acc_z);
+  acChart.data.datasets.forEach(ds => { if (ds.data.length > N) ds.data.shift(); });
+  acChart.update('none');
+
+  voltChart.data.datasets[0].data.push(d.ina_voltage);
+  if (voltChart.data.datasets[0].data.length > N) voltChart.data.datasets[0].data.shift();
+  voltChart.update('none');
+
+  const c = applyCalib(d.roll, d.pitch, d.yaw);
+  setRing('r-roll', 'rv-roll', c.r, 90);
+  setRing('r-pitch', 'rv-pitch', c.p, 90);
+  setYawRing(c.y);
+  document.getElementById('rot-hud').textContent = `P: ${c.p.toFixed(1)}  R: ${c.r.toFixed(1)}  Y: ${(((c.y%360)+360)%360).toFixed(1)}`;
+  targetPitch = c.p * Math.PI / 180;
+  targetRoll  = c.r * Math.PI / 180;
+  targetYaw   = c.y * Math.PI / 180;
+
+  document.getElementById('gx').textContent = d.gyro_x.toFixed(2) + ' °/s';
+  document.getElementById('gy').textContent = d.gyro_y.toFixed(2) + ' °/s';
+  document.getElementById('gz').textContent = d.gyro_z.toFixed(2) + ' °/s';
+
+  document.getElementById('bvolt').textContent = d.ina_voltage.toFixed(2) + ' V';
+  document.getElementById('bcurr').textContent = d.ina_current_mA.toFixed(1) + ' mA';
+  document.getElementById('bpow').textContent = d.ina_power_mW.toFixed(1) + ' mW';
+
+  document.getElementById('rssi').textContent = d.wifi_rssi + ' dBm';
+  document.getElementById('cputemp').textContent = '+' + d.cpu_temp.toFixed(1) + ' °C';
+  document.getElementById('upt').textContent = formatUptime(d.uptime_s);
+  document.getElementById('errsline').textContent =
+    (d.icm_i2c_errors + d.bmp_errors + d.ina_errors) + ' / ' + d.wifi_reconnects;
+
+  setDotClass('dot-attitude', d.icm_ok);
+  setDotClass('dot-baro', d.bmp_ok);
+  setDotClass('dot-wifi', d.wifi_connected);
+  setDotClass('dot-power', d.ina_ok);
+  setDotClass('dot-gps', d.gps_fix);
+  document.getElementById('link-tag').textContent = d.wifi_connected ? 'Link Active' : 'Link Down';
+
+  if (!d.gps_module) {
+    document.getElementById('gps-badge').textContent = 'Not Connected';
+    document.getElementById('gps-status').textContent = 'NO MODULE DETECTED';
+    document.getElementById('gps-lat').textContent = '--';
+    document.getElementById('gps-lon').textContent = '--';
+    document.getElementById('gps-sats').textContent = '--';
+    document.getElementById('gps-hdop').textContent = '--';
+  } else if (!d.gps_fix) {
+    document.getElementById('gps-badge').textContent = 'Searching';
+    document.getElementById('gps-status').textContent = 'SEARCHING FOR SATELLITES';
+    document.getElementById('gps-lat').textContent = '--';
+    document.getElementById('gps-lon').textContent = '--';
+    document.getElementById('gps-sats').textContent = d.gps_sats;
+    document.getElementById('gps-hdop').textContent = d.gps_hdop.toFixed(1);
+  } else {
+    document.getElementById('gps-badge').textContent = 'Fix';
+    document.getElementById('gps-status').textContent = 'GPS LOCK ACQUIRED';
+    document.getElementById('gps-lat').textContent = d.gps_lat.toFixed(6) + '°';
+    document.getElementById('gps-lon').textContent = d.gps_lon.toFixed(6) + '°';
+    document.getElementById('gps-sats').textContent = d.gps_sats;
+    document.getElementById('gps-hdop').textContent = d.gps_hdop.toFixed(1);
+  }
+
+  updateGpsMap(d);
+}
+
+async function refresh() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 500);
+  try {
+    const r = await fetch(`http://${ESP32_IP}/data`, { signal: controller.signal });
+    const d = await r.json();
+    latest = d;
+    updateUI(d);
+  } catch (e) {
+    document.getElementById('link-tag').textContent = 'Link Lost (check ESP32 IP above)';
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+const FETCH_INTERVAL_MS = 100; // slightly slower than the ESP32's own page --
+                                // this is a cross-network fetch, not same-origin
+async function refreshLoop() {
+  await refresh();
+  setTimeout(refreshLoop, FETCH_INTERVAL_MS);
+}
+refreshLoop();
+
+setInterval(() => {
+  if (!latest) return;
+  const d = latest;
+  const msgs = [
+    `[IMU] P:${d.pitch.toFixed(2)} R:${d.roll.toFixed(2)} Y:${(((d.yaw%360)+360)%360).toFixed(2)}`,
+    `[BARO] T:${d.bmp_temp.toFixed(1)}C ALT:${d.bmp_altitude.toFixed(1)}m`,
+    `[PWR] V:${d.ina_voltage.toFixed(2)} I:${d.ina_current_mA.toFixed(1)}mA P:${d.ina_power_mW.toFixed(1)}mW`,
+    `[GPS] fix:${d.gps_fix} sats:${d.gps_sats} lat:${d.gps_fix ? d.gps_lat.toFixed(5) : '--'}`,
+    `[SYS] RSSI:${d.wifi_rssi}dBm UP:${formatUptime(d.uptime_s)}`
+  ];
+  const idx = consoleTick % msgs.length;
+  const line = document.createElement('div');
+  line.className = idx === 0 ? 'log-w' : 'log-d';
+  line.textContent = msgs[idx];
+  const con = document.getElementById('con');
+  con.appendChild(line);
+  while (con.children.length > 80) con.removeChild(con.firstChild);
+  con.scrollTop = con.scrollHeight;
+  consoleTick++;
+}, 700);
+
+let fc = 0, fpsC = 0, lastFps = Date.now();
+function rloop() {
+  requestAnimationFrame(rloop);
+  tgl.intensity = 0.08 + 0.06 * Math.sin(Date.now()*0.004);
+  curPitch += (targetPitch - curPitch) * SMOOTHING;
+  curRoll  += (targetRoll  - curRoll)  * SMOOTHING;
+  curYaw   += (targetYaw   - curYaw)   * SMOOTHING;
+  sat.rotation.x = curPitch;
+  sat.rotation.z = curRoll;
+  sat.rotation.y = curYaw;
+  ren.render(scene, cam);
+  fpsC++;
+  const now = Date.now();
+  if (now - lastFps > 1000) {
+    document.getElementById('fps-hud').textContent = `${fpsC} FPS`;
+    fc += fpsC; fpsC = 0; lastFps = now;
+    document.getElementById('fc').textContent = fc.toLocaleString();
+  }
+}
+rloop();
+
+// ============ PI CAMERA FEED ============
+const CAM_BASE = 'http://192.168.137.119:5000';
+const ENDPOINTS = ['/video_feed', '/stream', '/mjpeg'];
+let endpointIdx = 0;
+function tryEndpoint(idx) {
+  if (idx >= ENDPOINTS.length) {
+    document.getElementById('cam-msg').textContent = 'No stream found';
+    document.getElementById('cam-status').textContent = 'Offline';
+    console.warn('[camera] all endpoints failed:', ENDPOINTS.map(e => CAM_BASE + e));
+    console.warn('[camera] common causes: Flask app.run() missing host="0.0.0.0", wrong route name, '
+      + 'camera server not running, or this device on a different network than the Pi.');
+    setTimeout(() => { endpointIdx = 0; tryEndpoint(0); }, 5000);
+    return;
+  }
+  const url = CAM_BASE + ENDPOINTS[idx];
+  const img = document.getElementById('camFeed');
+  document.getElementById('cam-msg').textContent = 'Trying ' + ENDPOINTS[idx];
+  img.onload = () => {
+    img.style.opacity = '1';
+    document.getElementById('cam-overlay').style.display = 'none';
+    document.getElementById('cam-status').textContent = 'Live';
+    document.getElementById('cam-live-dot').style.display = 'block';
+  };
+  img.onerror = () => {
+    img.style.opacity = '0';
+    endpointIdx++;
+    setTimeout(() => tryEndpoint(endpointIdx), 800);
+  };
+  img.src = url;
+}
+tryEndpoint(0);
+</script>
+</body>
+</html>
